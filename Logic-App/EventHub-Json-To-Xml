@@ -1,0 +1,88 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Compose": {
+                "inputs": "@json(triggerBody()?['contentData'])",
+                "runAfter": {},
+                "type": "Compose"
+            },
+            "Convert_to_XML": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "xmlOrder",
+                            "type": "object",
+                            "value": "@xml(json(concat('{\"root\":', string(outputs('Compose')), '}')))"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Compose": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Create_or_update_document_(V3)": {
+                "inputs": {
+                    "body": {
+                        "id": "@{guid()}",
+                        "xmlContent": "@{string(variables('xmlOrder'))}"
+                    },
+                    "host": {
+                        "connection": {
+                            "referenceName": "documentdb"
+                        }
+                    },
+                    "method": "post",
+                    "path": "/v2/cosmosdb/@{encodeURIComponent('AccountNameFromSettings')}/dbs/@{encodeURIComponent('Demo')}/colls/@{encodeURIComponent('orders')}/docs"
+                },
+                "runAfter": {
+                    "Convert_to_XML": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "ApiConnection"
+            },
+            "HTTP": {
+                "inputs": {
+                    "body": "@variables('xmlOrder')",
+                    "method": "POST",
+                    "uri": "https://httpbin.org/post"
+                },
+                "runAfter": {
+                    "Create_or_update_document_(V3)": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                },
+                "type": "Http"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "When_events_are_available_in_Event_hub": {
+                "inputs": {
+                    "parameters": {
+                        "consumerGroup": "logicappsconsumergroup",
+                        "eventHubName": "orders"
+                    },
+                    "serviceProviderConfiguration": {
+                        "connectionName": "eventHub-1",
+                        "operationId": "receiveEvents",
+                        "serviceProviderId": "/serviceProviders/eventHub"
+                    }
+                },
+                "splitOn": "@triggerOutputs()?['body']",
+                "type": "ServiceProvider"
+            }
+        }
+    },
+    "kind": "Stateful"
+}
