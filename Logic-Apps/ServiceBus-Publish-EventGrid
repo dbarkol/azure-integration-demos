@@ -1,0 +1,92 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Publish_Event": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "referenceName": "azureeventgridpublish"
+                        }
+                    },
+                    "method": "post",
+                    "body": [
+                        {
+                            "id": "@triggerBody()?['MessageId']",
+                            "subject": "Sprockets.Orders",
+                            "eventType": "NewOrder",
+                            "data": "@variables('OrderDetails')"
+                        }
+                    ],
+                    "path": "/eventGrid/api/events"
+                },
+                "runAfter": {
+                    "Initialize_variable": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Complete_the_message_in_a_queue": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "referenceName": "servicebus"
+                        }
+                    },
+                    "method": "delete",
+                    "path": "/@{encodeURIComponent(encodeURIComponent('orders'))}/messages/complete",
+                    "queries": {
+                        "lockToken": "@triggerBody()?['LockToken']",
+                        "queueType": "Main",
+                        "sessionId": ""
+                    }
+                },
+                "runAfter": {
+                    "Publish_Event": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Initialize_variable": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "OrderDetails",
+                            "type": "object",
+                            "value": "@json(decodeBase64(triggerOutputs()?['body']['ContentData']))"
+                        }
+                    ]
+                },
+                "runAfter": {}
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "When_a_message_is_received_in_a_queue_(peek-lock)": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "referenceName": "servicebus"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/@{encodeURIComponent(encodeURIComponent('orders'))}/messages/head/peek",
+                    "queries": {
+                        "queueType": "Main",
+                        "sessionId": "None"
+                    }
+                },
+                "recurrence": {
+                    "interval": 1,
+                    "frequency": "Minute"
+                }
+            }
+        }
+    },
+    "kind": "Stateless"
+}
